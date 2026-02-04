@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Türkiye YHT İstasyonları (Koyu Tema)</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #0f172a;
+      color: #e5e7eb;
+      font-family: Arial, sans-serif;
+    }
+    #map { height: 100vh; }
+    header {
+      position: absolute;
+      z-index: 1000;
+      left: 12px;
+      top: 12px;
+      background: rgba(2, 6, 23, 0.8);
+      padding: 10px 14px;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    }
+    header h2 { margin: 0 0 4px 0; font-size: 18px; }
+    header p { margin: 0; font-size: 13px; opacity: 0.85; }
+    .selection-panel {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(148, 163, 184, 0.2);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 12px;
+    }
+    .selection-label {
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      font-size: 10px;
+      opacity: 0.8;
+    }
+    .selection-values {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    #clearSelection {
+      align-self: flex-start;
+      background: #0f172a;
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      color: #e2e8f0;
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+    }
+    #clearSelection:hover {
+      background: #111827;
+      box-shadow: 0 8px 18px rgba(15, 23, 42, 0.35);
+      transform: translateY(-1px);
+    }
+    #clearSelection:active {
+      transform: translateY(0);
+    }
+    .station-tooltip {
+      background: #020617;
+      color: #e5e7eb;
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: bold;
+      white-space: nowrap;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.45);
+      cursor: pointer;
+      transition: transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
+      user-select: none;
+      pointer-events: auto;
+      border: 1px solid rgba(148, 163, 184, 0.35);
+    }
+    .station-tooltip::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      width: 0;
+      height: 0;
+      border: 6px solid transparent;
+      transform: translateX(-50%);
+    }
+    .station-tooltip.leaflet-tooltip-top::after {
+      top: 100%;
+      border-top-color: rgba(2, 6, 23, 0.95);
+    }
+    .station-tooltip.leaflet-tooltip-bottom::after {
+      bottom: 100%;
+      border-bottom-color: rgba(2, 6, 23, 0.95);
+    }
+    .station-tooltip.is-active {
+      transform: translateY(-1px) scale(1.02);
+      box-shadow: 0 10px 26px rgba(250,204,21,0.35);
+      color: #0f172a;
+      background: #facc15;
+    }
+    .station-tooltip.is-start {
+      color: #ecfeff;
+      background: #0891b2;
+      box-shadow: 0 10px 26px rgba(8,145,178,0.35);
+    }
+    .station-tooltip.is-end {
+      color: #fff7ed;
+      background: #f97316;
+      box-shadow: 0 10px 26px rgba(249,115,22,0.35);
+    }
+    .station-tooltip.is-route-red {
+      color: #fff1f2;
+      background: #ef4444;
+      box-shadow: 0 10px 26px rgba(239,68,68,0.35);
+    }
+    .station-tooltip.is-route-green {
+      color: #ecfdf5;
+      background: #22c55e;
+      box-shadow: 0 10px 26px rgba(34,197,94,0.35);
+    }
+    .station-tooltip.is-dim {
+      opacity: 0.35;
+    }
+    .station-tooltip.is-hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h2>Türkiye YHT İstasyonları</h2>
+    <p>Koyu temalı Türkiye haritası üzerinde</p>
+    <div class="selection-panel">
+      <div class="selection-label">Seçim</div>
+      <div class="selection-values">
+        <span id="startStation">Başlangıç: -</span>
+        <span id="endStation">Varış: -</span>
+      </div>
+      <button id="clearSelection" type="button">Temizle</button>
+    </div>
+  </header>
+
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const highlightCities = ["İstanbul", "Ankara", "Konya", "Sivas", "Karaman", "Eskişehir"];
+    const stations = [
+      { name: "Halkalı YHT", lat: 41.01833, lon: 28.76639, offset: [-18, -44] },
+      { name: "Bakırköy YHT", lat: 40.9786, lon: 28.8729, offset: [-20, -18] },
+      { name: "Söğütlüçeşme YHT", lat: 40.9908, lon: 29.0380, offset: [16, 28] },
+      { name: "Bostancı YHT", lat: 40.9626, lon: 29.0906, offset: [18, -26] },
+      { name: "Pendik YHT", lat: 40.88028, lon: 29.23167, offset: [18, 30] },
+      { name: "Gebze", lat: 40.78361, lon: 29.41139, offset: [14, -18] },
+      { name: "İzmit", lat: 40.76167, lon: 29.91778 },
+      { name: "Arifiye", lat: 40.71306, lon: 30.35583 },
+      { name: "Pamukova", lat: 40.5025, lon: 30.17222 },
+      { name: "Bilecik", lat: 40.14257, lon: 29.97933 },
+      { name: "Bozüyük", lat: 39.88028, lon: 30.04306 },
+      { name: "Eskişehir", lat: 39.77944, lon: 30.50778 },
+      { name: "Polatlı", lat: 39.58028, lon: 32.18139 },
+      { name: "Eryaman", lat: 39.95583, lon: 32.63028, offset: [10, -14] },
+      { name: "Ankara Gar", lat: 39.93472, lon: 32.84361, offset: [10, 14] },
+      { name: "Elmadağ YHT", lat: 39.9206, lon: 33.2303, offset: [10, -16] },
+      { name: "Kırıkkale YHT", lat: 39.8468, lon: 33.5153, offset: [10, 16] },
+      { name: "Yerköy YHT", lat: 39.6381, lon: 34.4686 },
+      { name: "Yozgat YHT", lat: 39.82, lon: 34.8147 },
+      { name: "Sorgun YHT", lat: 39.8106, lon: 35.185, offset: [10, 14] },
+      { name: "Akdağmadeni YHT", lat: 39.6603, lon: 35.8836 },
+      { name: "Yıldızeli YHT", lat: 39.8689, lon: 36.5989 },
+      { name: "Sivas Gar", lat: 39.73944, lon: 37.00667 },
+      { name: "Selçuklu Konya", lat: 37.89833, lon: 32.49806, offset: [12, -14] },
+      { name: "Konya Gar", lat: 37.8746, lon: 32.4924, offset: [12, 14] },
+      { name: "Çumra", lat: 37.57167, lon: 32.78417, offset: [12, 14] },
+      { name: "Karaman", lat: 37.18811, lon: 33.21518 }
+    ];
+
+    const map = L.map('map', {
+      zoomControl: true,
+      scrollWheelZoom: true,
+      dragging: true,
+      touchZoom: true,
+      doubleClickZoom: true,
+      boxZoom: true,
+      keyboard: true
+    });
+    const bounds = L.latLngBounds(stations.map(s => [s.lat, s.lon]));
+    map.fitBounds(bounds.pad(0.05));
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
+      maxZoom: 18,
+      minZoom: map.getZoom(),
+      attribution: '© OpenStreetMap © CARTO'
+    }).addTo(map);
+
+    const railLines = {
+      istanbul_ankara_corridor: [
+        "Halkalı YHT",
+        "Bakırköy YHT",
+        "Söğütlüçeşme YHT",
+        "Bostancı YHT",
+        "Pendik YHT",
+        "Gebze",
+        "İzmit",
+        "Arifiye",
+        "Pamukova",
+        "Bilecik",
+        "Bozüyük",
+        "Eskişehir",
+        "Polatlı",
+        "Eryaman",
+        "Ankara Gar"
+      ],
+      ankara_sivas: [
+        "Ankara Gar",
+        "Elmadağ YHT",
+        "Kırıkkale YHT",
+        "Yerköy YHT",
+        "Yozgat YHT",
+        "Sorgun YHT",
+        "Akdağmadeni YHT",
+        "Yıldızeli YHT",
+        "Sivas Gar"
+      ],
+      polatli_konya_karaman: [
+        "Polatlı",
+        "Selçuklu Konya",
+        "Konya Gar",
+        "Çumra",
+        "Karaman"
+      ]
+    };
+
+    function drawRailLine(names, styleOverrides = {}) {
+      const coords = names.map(n => stations.find(s => s.name === n)).filter(Boolean).map(s => [s.lat, s.lon]);
+      if (coords.length < 2) return;
+      return L.polyline(coords, {
+        color:'#64748b',
+        weight:3,
+        opacity:0.35,
+        dashArray:'6,6',
+        lineCap: 'round',
+        lineJoin: 'round',
+        ...styleOverrides
+      }).addTo(map);
+    }
+    Object.keys(railLines).forEach(k => drawRailLine(railLines[k]));
+
+    const yellowStations = ["Halkalı YHT","Bakırköy YHT","Söğütlüçeşme YHT","Pendik YHT","Bostancı YHT"];
+    const baseStyles = {};
+    const stationMarkers = new Map();
+    const stationTooltips = new Map();
+    const leaderLines = new Map();
+    const leaderStations = new Set();
+    let selectedStations = [];
+    let activeRoute = null;
+    const startEl = document.getElementById('startStation');
+    const endEl = document.getElementById('endStation');
+    const clearBtn = document.getElementById('clearSelection');
+
+    function getBaseStyle(station) {
+      const isHighlighted = (highlightCities.some(c => station.name.indexOf(c) !== -1) && station.name !== "Selçuklu Konya") || yellowStations.includes(station.name);
+      return isHighlighted
+        ? { radius: 9, color: '#facc15', fillColor: '#facc15', fillOpacity: 0.9, opacity: 0.95 }
+        : { radius: 6, color: '#22d3ee', fillColor: '#22d3ee', fillOpacity: 0.9, opacity: 0.9 };
+    }
+
+    function buildGraph() {
+      const graph = new Map();
+      Object.values(railLines).forEach(line => {
+        for (let i = 0; i < line.length - 1; i++) {
+          const a = line[i];
+          const b = line[i + 1];
+          if (!graph.has(a)) graph.set(a, new Set());
+          if (!graph.has(b)) graph.set(b, new Set());
+          graph.get(a).add(b);
+          graph.get(b).add(a);
+        }
+      });
+      return graph;
+    }
+
+    const graph = buildGraph();
+
+    function findPath(start, end) {
+      if (!graph.has(start) || !graph.has(end)) return null;
+      const queue = [start];
+      const visited = new Set([start]);
+      const prev = new Map();
+      while (queue.length) {
+        const node = queue.shift();
+        if (node === end) break;
+        graph.get(node).forEach(next => {
+          if (!visited.has(next)) {
+            visited.add(next);
+            prev.set(next, node);
+            queue.push(next);
+          }
+        });
+      }
+      if (!visited.has(end)) return null;
+      const path = [];
+      let cur = end;
+      while (cur) {
+        path.unshift(cur);
+        if (cur === start) break;
+        cur = prev.get(cur);
+      }
+      return path;
+    }
+
+    function setTooltipClass(name, isActive, isDim, isHidden, isStart, isEnd, isRouteRed, isRouteGreen) {
+      let el = stationTooltips.get(name);
+      if (!el) {
+        const marker = stationMarkers.get(name);
+        const tooltip = marker ? marker.getTooltip() : null;
+        el = tooltip ? tooltip.getElement() : null;
+        if (el) stationTooltips.set(name, el);
+      }
+      if (!el) return;
+      el.classList.toggle('is-active', isActive);
+      el.classList.toggle('is-dim', isDim);
+      el.classList.toggle('is-hidden', isHidden);
+      el.classList.toggle('is-start', isStart);
+      el.classList.toggle('is-end', isEnd);
+      el.classList.toggle('is-route-red', isRouteRed);
+      el.classList.toggle('is-route-green', isRouteGreen);
+    }
+
+    function updateStyles(path = null, pathColor = '#facc15') {
+      const pathSet = path ? new Set(path) : null;
+      const isRedRoute = pathColor === '#ef4444';
+      const isGreenRoute = pathColor === '#22c55e';
+      stationMarkers.forEach((marker, name) => {
+        const base = baseStyles[name];
+        if (pathSet) {
+          if (pathSet.has(name)) {
+            marker.setStyle({
+              ...base,
+              radius: Math.max(base.radius, 9),
+              opacity: 1,
+              fillOpacity: 1,
+              color: pathColor,
+              fillColor: pathColor
+            });
+            setTooltipClass(name, true, false, false, false, false, isRedRoute, isGreenRoute);
+          } else {
+            marker.setStyle({ ...base, radius: 0, opacity: 0, fillOpacity: 0, color: '#475569', fillColor: '#475569' });
+            setTooltipClass(name, false, true, true, false, false, false, false);
+          }
+        } else {
+          marker.setStyle(base);
+          setTooltipClass(name, false, false, false, false, false, false, false);
+        }
+      });
+
+      selectedStations.forEach((name, idx) => {
+        const marker = stationMarkers.get(name);
+        if (marker) {
+          const isStart = idx === 0;
+          const isEnd = idx === 1;
+          const base = baseStyles[name];
+          marker.setStyle({
+            ...base,
+            radius: 11,
+            opacity: 1,
+            fillOpacity: 1,
+            color: pathSet ? pathColor : (isStart ? '#0891b2' : '#f97316'),
+            fillColor: pathSet ? pathColor : (isStart ? '#0891b2' : '#f97316')
+          });
+          if (pathSet && isGreenRoute) {
+            setTooltipClass(name, true, false, false, false, false, false, true);
+          } else {
+            setTooltipClass(name, true, false, false, isStart, isEnd, false, false);
+          }
+        }
+      });
+    }
+
+    function updateRoute() {
+      if (activeRoute) {
+        map.removeLayer(activeRoute);
+        activeRoute = null;
+      }
+      if (selectedStations.length < 2) {
+        updateStyles(null);
+        updateSelectionUI();
+        return;
+      }
+      const [start, end] = selectedStations;
+      const path = findPath(start, end);
+      if (!path || path.length < 2) {
+        updateStyles(null);
+        updateSelectionUI();
+        return;
+      }
+      const ankaraSivasLine = railLines.ankara_sivas || [];
+      const ankaraSivasTriggers = ankaraSivasLine.filter(name => name !== "Ankara Gar");
+      const extraRedTriggers = ["Çumra", "Karaman"];
+      const isRedRoute = ankaraSivasTriggers.includes(start)
+        || ankaraSivasTriggers.includes(end)
+        || extraRedTriggers.includes(start)
+        || extraRedTriggers.includes(end);
+      const routeColor = isRedRoute ? '#ef4444' : '#22c55e';
+      activeRoute = drawRailLine(path, { color: routeColor, weight: 5, opacity: 0.95, dashArray: null });
+      updateStyles(path, routeColor);
+      updateSelectionUI();
+    }
+
+    function selectStation(name) {
+      if (selectedStations.length === 2) {
+        selectedStations = [name];
+      } else if (selectedStations.length === 1) {
+        if (selectedStations[0] === name) return;
+        selectedStations.push(name);
+      } else {
+        selectedStations = [name];
+      }
+      updateRoute();
+      updateSelectionUI();
+    }
+
+    function updateSelectionUI() {
+      const startName = selectedStations[0] || '-';
+      const endName = selectedStations[1] || '-';
+      startEl.textContent = `Başlangıç: ${startName}`;
+      endEl.textContent = `Varış: ${endName}`;
+    }
+
+    function attachTooltipClick(marker, name) {
+      const tooltip = marker.getTooltip();
+      if (!tooltip) return;
+      const el = tooltip.getElement();
+      if (!el) {
+        requestAnimationFrame(() => attachTooltipClick(marker, name));
+        return;
+      }
+      stationTooltips.set(name, el);
+      el.addEventListener('click', (event) => {
+        event.stopPropagation();
+        selectStation(name);
+      });
+    }
+
+    const staggerOffsets = [
+      [0, -18],
+      [12, -16],
+      [-12, -16],
+      [16, -6],
+      [-16, -6],
+      [10, -26],
+      [-10, -26]
+    ];
+
+    stations.forEach((s, idx) => {
+      const baseStyle = getBaseStyle(s);
+      baseStyles[s.name] = baseStyle;
+
+      const marker = L.circleMarker([s.lat, s.lon], {
+        ...baseStyle,
+        interactive: true
+      }).addTo(map);
+
+      const offset = s.offset
+        ? L.point(s.offset[0], s.offset[1])
+        : L.point(staggerOffsets[idx % staggerOffsets.length][0], staggerOffsets[idx % staggerOffsets.length][1]);
+      const dir = offset.y > 0 ? 'bottom' : 'top';
+
+      marker.bindTooltip('<b>' + s.name + '</b>', {
+        permanent: true,
+        direction: dir,
+        offset: offset,
+        className: 'station-tooltip',
+        interactive: true,
+        opacity: 1
+      });
+
+      marker.on('click', () => selectStation(s.name));
+      marker.on('add', () => attachTooltipClick(marker, s.name));
+
+      stationMarkers.set(s.name, marker);
+
+    });
+
+
+    clearBtn.addEventListener('click', () => {
+      selectedStations = [];
+      updateRoute();
+    });
+
+    updateStyles(null);
+    updateSelectionUI();
+  </script>
+</body>
+</html>
