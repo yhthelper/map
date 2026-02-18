@@ -263,6 +263,35 @@
     const leaderStations = new Set();
     let selectedStations = [];
     let activeRoute = null;
+    const stationProvinces = {
+      "Halkalı YHT": "İstanbul",
+      "Bakırköy YHT": "İstanbul",
+      "Söğütlüçeşme YHT": "İstanbul",
+      "Bostancı YHT": "İstanbul",
+      "Pendik YHT": "İstanbul",
+      "Gebze": "Kocaeli",
+      "İzmit": "Kocaeli",
+      "Arifiye": "Sakarya",
+      "Pamukova": "Sakarya",
+      "Bilecik": "Bilecik",
+      "Bozüyük": "Bilecik",
+      "Eskişehir": "Eskişehir",
+      "Polatlı": "Ankara",
+      "Eryaman": "Ankara",
+      "Ankara Gar": "Ankara",
+      "Elmadağ YHT": "Ankara",
+      "Kırıkkale YHT": "Kırıkkale",
+      "Yerköy YHT": "Yozgat",
+      "Yozgat YHT": "Yozgat",
+      "Sorgun YHT": "Yozgat",
+      "Akdağmadeni YHT": "Yozgat",
+      "Yıldızeli YHT": "Sivas",
+      "Sivas Gar": "Sivas",
+      "Selçuklu Konya": "Konya",
+      "Konya Gar": "Konya",
+      "Çumra": "Konya",
+      "Karaman": "Karaman"
+    };
     const startEl = document.getElementById('startStation');
     const endEl = document.getElementById('endStation');
     const clearBtn = document.getElementById('clearSelection');
@@ -336,21 +365,22 @@
       el.classList.toggle('is-route-green', isRouteGreen);
     }
 
-    function updateStyles(path = null, pathColor = '#facc15') {
+    function updateStyles(path = null, pathColors = null) {
       const pathSet = path ? new Set(path) : null;
-      const isRedRoute = pathColor === '#ef4444';
-      const isGreenRoute = pathColor === '#22c55e';
       stationMarkers.forEach((marker, name) => {
         const base = baseStyles[name];
         if (pathSet) {
           if (pathSet.has(name)) {
+            const color = pathColors && pathColors[name] ? pathColors[name] : '#ef4444';
+            const isRedRoute = color === '#ef4444';
+            const isGreenRoute = color === '#22c55e';
             marker.setStyle({
               ...base,
               radius: Math.max(base.radius, 9),
               opacity: 1,
               fillOpacity: 1,
-              color: pathColor,
-              fillColor: pathColor
+              color: color,
+              fillColor: color
             });
             setTooltipClass(name, true, false, false, false, false, isRedRoute, isGreenRoute);
           } else {
@@ -366,21 +396,29 @@
       selectedStations.forEach((name, idx) => {
         const marker = stationMarkers.get(name);
         if (marker) {
-          const isStart = idx === 0;
-          const isEnd = idx === 1;
           const base = baseStyles[name];
+          const pathColor = pathSet && pathColors && pathColors[name] ? pathColors[name] : null;
           marker.setStyle({
             ...base,
             radius: 11,
             opacity: 1,
             fillOpacity: 1,
-            color: pathSet ? pathColor : (isStart ? '#0891b2' : '#f97316'),
-            fillColor: pathSet ? pathColor : (isStart ? '#0891b2' : '#f97316')
+            color: pathColor ? pathColor : (idx === 0 ? '#0891b2' : '#f97316'),
+            fillColor: pathColor ? pathColor : (idx === 0 ? '#0891b2' : '#f97316')
           });
-          if (pathSet && isGreenRoute) {
-            setTooltipClass(name, true, false, false, false, false, false, true);
+          if (pathSet && pathColor) {
+            setTooltipClass(
+              name,
+              true,
+              false,
+              false,
+              false,
+              false,
+              pathColor === '#ef4444',
+              pathColor === '#22c55e'
+            );
           } else {
-            setTooltipClass(name, true, false, false, isStart, isEnd, false, false);
+            setTooltipClass(name, true, false, false, idx === 0, idx === 1, false, false);
           }
         }
       });
@@ -403,16 +441,16 @@
         updateSelectionUI();
         return;
       }
-      const ankaraSivasLine = railLines.ankara_sivas || [];
-      const ankaraSivasTriggers = ankaraSivasLine.filter(name => name !== "Ankara Gar");
-      const extraRedTriggers = ["Çumra", "Karaman"];
-      const isRedRoute = ankaraSivasTriggers.includes(start)
-        || ankaraSivasTriggers.includes(end)
-        || extraRedTriggers.includes(start)
-        || extraRedTriggers.includes(end);
-      const routeColor = isRedRoute ? '#ef4444' : '#22c55e';
-      activeRoute = drawRailLine(path, { color: routeColor, weight: 5, opacity: 0.95, dashArray: null });
-      updateStyles(path, routeColor);
+      const startProvince = stationProvinces[start] || null;
+      const greenEnabledProvinces = new Set(["Ankara", "Konya", "İstanbul"]);
+      const shouldUseProvinceRule = startProvince && greenEnabledProvinces.has(startProvince);
+      const pathColors = {};
+      path.forEach(name => {
+        const province = stationProvinces[name] || null;
+        pathColors[name] = (shouldUseProvinceRule && province === startProvince) ? '#22c55e' : '#ef4444';
+      });
+      activeRoute = drawRailLine(path, { color: '#ef4444', weight: 5, opacity: 0.95, dashArray: null });
+      updateStyles(path, pathColors);
       updateSelectionUI();
     }
 
